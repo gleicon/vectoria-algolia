@@ -10,7 +10,7 @@ Complete runbook for building, running, and loading data.
 |------|---------|-------|
 | Docker | 24+ | `docker --version` |
 | Docker Compose | v2 | `docker compose version` |
-| Rust | 1.85+ | `rustc --version` (local dev only) |
+| Rust | 1.88+ | `rustc --version` (local dev only) |
 | Node.js | 22+ | `node --version` (local dev only) |
 | jq | any | `jq --version` (load script only) |
 
