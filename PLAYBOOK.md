@@ -314,3 +314,59 @@ _cat_kw("Footwear", "running", "trail")    # perfect if category + keyword; part
 _brand_cat("Sony", "Electronics")          # grades by brand + category match
 _kw("waterproof", cats=["Clothing"])       # relevant if keyword in title/description
 ```
+
+---
+
+## Real-world datasets
+
+The default dataset (`scripts/products.json`) is synthetic. Two scripts load
+real publicly-licensed datasets for deeper experimentation.
+
+### WANDS — Wayfair Annotated Dataset
+
+~42K furniture/home products, 480 annotated queries, relevance grades.
+No extra dependencies — stdlib only.
+
+[https://github.com/wayfair/WANDS](https://github.com/wayfair/WANDS) (Apache-2.0)
+
+```sh
+# Load all products and run quality eval with real WANDS labels
+python3 scripts/wands_setup.py --eval
+
+# Limit to 5 000 products, evaluate 50 queries
+python3 scripts/wands_setup.py --max-products 5000 --max-queries 50 --eval
+
+# Skip loading (products already in), just evaluate
+python3 scripts/wands_setup.py --skip-load --eval --verbose
+```
+
+### Amazon ESCI — Shopping Queries Dataset
+
+~482K English products, real e-commerce search queries with E/S/C/I relevance
+labels (Exact / Substitute / Complement / Irrelevant).
+Requires pandas for parquet parsing; files cached locally after first download.
+
+[https://github.com/amazon-science/esci-data](https://github.com/amazon-science/esci-data) (Apache-2.0)
+
+```sh
+pip install pandas pyarrow
+
+# Download (~200 MB, cached), load 5 000 products, evaluate 200 queries
+python3 scripts/esci_setup.py --eval
+
+# Load 20 000 products
+python3 scripts/esci_setup.py --max-products 20000 --eval
+
+# Skip loading, evaluate only
+python3 scripts/esci_setup.py --skip-load --eval --verbose
+```
+
+Parquet files are cached in `.esci_cache/` (override with `--cache-dir`).
+
+### Notes
+
+- WANDS and ESCI use separate `objectID` prefixes (`wands-*`, `esci-*`) so they
+  can coexist with the default synthetic dataset in the same index.
+- Both scripts accept `--server` and `--index` to target any running instance.
+- Quality metrics from these datasets are directly comparable to the synthetic
+  baseline because they use the same NDCG@10 / MRR / P@5 implementation.
