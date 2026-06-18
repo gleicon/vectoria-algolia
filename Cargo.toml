@@ -1,0 +1,40 @@
+[package]
+name = "vectoria-algolia"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+authors = ["Gleicon Moraes <gleicon@gmail.com>"]
+repository = "https://github.com/gleicon/vectoria-algolia"
+description = "Algolia-compatible API adapter for Vectoria — drop-in for InstantSearch"
+
+[[bin]]
+name = "vectoria-algolia"
+path = "src/main.rs"
+
+[dependencies]
+# Vectoria core — use path for local dev; switch to crates.io before publishing
+vectoria-core = { path = "../vectoria/vectoria-core" }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# HTTP server
+axum = { version = "0.8", features = ["macros"] }
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Error handling
+anyhow = "1"
+
+# Tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# UUID for queryID
+uuid = { version = "1", features = ["v4"] }
+
+# URL-encoded params (multi-search legacy format)
+serde_urlencoded = "0.7"
