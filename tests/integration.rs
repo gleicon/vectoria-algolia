@@ -247,6 +247,95 @@ async fn test_query_filter_price_range() {
     }
 }
 
+// ── Highlight tests ───────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_highlight_result_present_on_hits() {
+    let app = seeded_app().await;
+    let resp = app
+        .oneshot(post_req(
+            "/1/indexes/products/query",
+            json!({"query": "running", "hitsPerPage": 5}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = json_body(resp).await;
+    let hits = body["hits"].as_array().unwrap();
+    assert!(!hits.is_empty(), "need at least one hit to verify highlight");
+    let hit = &hits[0];
+    let hr = hit.get("_highlightResult").expect("_highlightResult must be present");
+    // title must have a highlight entry
+    let title_hl = hr.get("title").expect("_highlightResult.title must exist");
+    assert!(title_hl.get("value").is_some(), "highlight.value must exist");
+    assert!(title_hl.get("matchLevel").is_some(), "highlight.matchLevel must exist");
+    assert!(title_hl.get("matchedWords").is_some(), "highlight.matchedWords must exist");
+}
+
+#[tokio::test]
+async fn test_highlight_tags_wrap_matched_text() {
+    let app = seeded_app().await;
+    let resp = app
+        .oneshot(post_req(
+            "/1/indexes/products/query",
+            json!({"query": "running", "hitsPerPage": 10}),
+        ))
+        .await
+        .unwrap();
+    let body = json_body(resp).await;
+    let hits = body["hits"].as_array().unwrap();
+    // Find a hit whose title contains "Running" — should have AIS tags in its highlight
+    let tagged = hits.iter().find(|h| {
+        h["_highlightResult"]["title"]["value"]
+            .as_str()
+            .map(|v| v.contains("<ais-highlight-0000000000>"))
+            .unwrap_or(false)
+    });
+    assert!(tagged.is_some(), "at least one hit title should contain AIS highlight tags");
+}
+
+#[tokio::test]
+async fn test_highlight_empty_query_none_match_level() {
+    let app = seeded_app().await;
+    let resp = app
+        .oneshot(post_req(
+            "/1/indexes/products/query",
+            json!({"query": "", "hitsPerPage": 5}),
+        ))
+        .await
+        .unwrap();
+    let body = json_body(resp).await;
+    let hits = body["hits"].as_array().unwrap();
+    if let Some(hit) = hits.first() {
+        let level = hit["_highlightResult"]["title"]["matchLevel"].as_str().unwrap_or("none");
+        assert_eq!(level, "none", "empty query → matchLevel should be none");
+    }
+}
+
+// ── facetFilters tests ────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_facet_filters_restrict_results() {
+    let app = seeded_app().await;
+    let resp = app
+        .oneshot(post_req(
+            "/1/indexes/products/query",
+            json!({"query": "", "hitsPerPage": 10, "facetFilters": [["category:Electronics"]]}),
+        ))
+        .await
+        .unwrap();
+    let body = json_body(resp).await;
+    let hits = body["hits"].as_array().unwrap();
+    assert!(!hits.is_empty(), "should return hits for Electronics facetFilter");
+    for hit in hits {
+        assert_eq!(
+            hit["category"].as_str().unwrap_or(""),
+            "Electronics",
+            "facetFilters must restrict to Electronics"
+        );
+    }
+}
+
 // ── Multi-search tests ────────────────────────────────────────────────────────
 
 #[tokio::test]
@@ -270,6 +359,58 @@ async fn test_multi_query_returns_results_array() {
     assert_eq!(results.len(), 2, "two requests → two results");
     assert!(results[0].get("hits").is_some());
     assert!(results[1].get("hits").is_some());
+}
+
+#[tokio::test]
+async fn test_disjunctive_facet_pattern() {
+    // InstantSearch disjunctive faceting sends N+1 queries:
+    //   request[0]: main query with all active filters (returns hits)
+    //   request[1]: same query WITHOUT the one facet being refined (returns independent counts)
+    // Verify that the two results are independent — filtered has fewer hits.
+    let app = seeded_app().await;
+    let resp = app
+        .oneshot(post_req(
+            "/1/indexes/_/queries",
+            json!({
+                "requests": [
+                    // main: filtered to Electronics
+                    {
+                        "indexName": "products",
+                        "query": "",
+                        "hitsPerPage": 10,
+                        "facets": ["category"],
+                        "facetFilters": [["category:Electronics"]]
+                    },
+                    // disjunctive: no category filter — returns all, for sidebar counts
+                    {
+                        "indexName": "products",
+                        "query": "",
+                        "hitsPerPage": 10,
+                        "facets": ["category"]
+                    }
+                ]
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = json_body(resp).await;
+    let results = body["results"].as_array().unwrap();
+    assert_eq!(results.len(), 2);
+
+    let filtered_nb  = results[0]["nbHits"].as_u64().unwrap_or(0);
+    let unfiltered_nb = results[1]["nbHits"].as_u64().unwrap_or(0);
+    assert!(
+        filtered_nb <= unfiltered_nb,
+        "filtered result ({filtered_nb}) must have ≤ hits than unfiltered ({unfiltered_nb})"
+    );
+
+    // The unfiltered result should include facet counts for all categories
+    let facets = &results[1]["facets"];
+    assert!(
+        facets.is_object() && facets["category"].is_object(),
+        "disjunctive sub-query must return category facet counts"
+    );
 }
 
 #[tokio::test]

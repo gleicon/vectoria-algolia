@@ -4,6 +4,101 @@ use serde_json::{Map, Value};
 use vectoria_core::model::{Hit, SearchMode, SearchRequest, SearchResponse};
 use crate::filter_parser;
 
+fn default_highlight_pre_tag() -> String {
+    "<ais-highlight-0000000000>".to_string()
+}
+fn default_highlight_post_tag() -> String {
+    "</ais-highlight-0000000000>".to_string()
+}
+
+/// Wrap every occurrence of any token in `text` with pre/post tags.
+/// Returns (highlighted_value, matched_words, match_level).
+fn highlight_text(
+    text: &str,
+    tokens: &[&str],
+    pre: &str,
+    post: &str,
+) -> (String, Vec<String>, &'static str) {
+    if tokens.is_empty() || text.is_empty() {
+        return (text.to_string(), vec![], "none");
+    }
+    let lower = text.to_lowercase();
+    // Collect byte-offset spans for each matched token.
+    let mut spans: Vec<(usize, usize)> = vec![];
+    let mut matched: Vec<String> = vec![];
+    for token in tokens {
+        let tl = token.to_lowercase();
+        if tl.is_empty() {
+            continue;
+        }
+        let mut start = 0usize;
+        while let Some(pos) = lower[start..].find(tl.as_str()) {
+            let abs = start + pos;
+            spans.push((abs, abs + tl.len()));
+            if !matched.contains(&tl) {
+                matched.push(tl.clone());
+            }
+            start = abs + tl.len();
+        }
+    }
+    if spans.is_empty() {
+        return (text.to_string(), vec![], "none");
+    }
+    // Merge overlapping spans.
+    spans.sort_unstable_by_key(|s| s.0);
+    let mut merged: Vec<(usize, usize)> = vec![];
+    for (s, e) in spans {
+        if let Some(last) = merged.last_mut() {
+            if s <= last.1 {
+                last.1 = last.1.max(e);
+                continue;
+            }
+        }
+        merged.push((s, e));
+    }
+    // Build highlighted string.
+    let bytes = text.as_bytes();
+    let mut out = String::with_capacity(text.len() + merged.len() * (pre.len() + post.len()));
+    let mut cursor = 0usize;
+    for (s, e) in &merged {
+        out.push_str(&text[cursor..*s]);
+        out.push_str(pre);
+        // Use original case from source, not lowercased.
+        out.push_str(std::str::from_utf8(&bytes[*s..*e]).unwrap_or(""));
+        out.push_str(post);
+        cursor = *e;
+    }
+    out.push_str(&text[cursor..]);
+
+    let total_chars = text.chars().count();
+    let highlighted_chars: usize = merged.iter().map(|(s, e)| e - s).sum();
+    let level = if highlighted_chars >= total_chars { "full" } else { "partial" };
+    (out, matched, level)
+}
+
+fn build_highlight_result(
+    attributes: &Map<String, Value>,
+    tokens: &[&str],
+    pre: &str,
+    post: &str,
+) -> Map<String, Value> {
+    let mut result = Map::new();
+    for (key, val) in attributes {
+        if let Value::String(s) = val {
+            let (highlighted, matched_words, level) = highlight_text(s, tokens, pre, post);
+            let fully = level == "full";
+            let entry = serde_json::json!({
+                "value": highlighted,
+                "matchLevel": level,
+                "matchedWords": matched_words,
+                "fullyHighlighted": fully,
+            });
+            result.insert(key.clone(), entry);
+        }
+    }
+    result
+}
+
 // ── Algolia request ───────────────────────────────────────────────────────────
 
 /// Single-index query body (POST /1/indexes/{name}/query).
@@ -22,8 +117,15 @@ pub struct AlgoliaQuery {
     pub filters: Option<String>,
     /// Algolia numericFilters array: ["price >= 100", "price < 200"].
     pub numeric_filters: Option<Vec<String>>,
+    /// RefinementList sends [["attr:val"]] or [["attr:a","attr:b"]] for OR.
+    /// Outer array = AND, inner array = OR across same attribute.
+    pub facet_filters: Option<Value>,
     /// "hybrid" | "semantic" | "bm25" — non-standard extension.
     pub search_mode: Option<String>,
+    #[serde(default = "default_highlight_pre_tag")]
+    pub highlight_pre_tag: String,
+    #[serde(default = "default_highlight_post_tag")]
+    pub highlight_post_tag: String,
 }
 
 fn default_hits_per_page() -> usize { 20 }
@@ -44,6 +146,26 @@ impl AlgoliaQuery {
         if let Some(nf) = &self.numeric_filters {
             for term in nf {
                 filters.extend(filter_parser::parse(term));
+            }
+        }
+
+        // facetFilters: [["attr:val"], ["attr:a","attr:b"]]
+        // Outer = AND groups; inner = OR within one attribute.
+        // We take the first value per attribute (single-select common case).
+        if let Some(ff) = &self.facet_filters {
+            let groups: Vec<&Value> = match ff {
+                Value::Array(arr) => arr.iter().collect(),
+                other => vec![other],
+            };
+            for group in groups {
+                let terms: Vec<&str> = match group {
+                    Value::Array(arr) => arr.iter().filter_map(|v| v.as_str()).collect(),
+                    Value::String(s) => vec![s.as_str()],
+                    _ => continue,
+                };
+                if let Some(first) = terms.first() {
+                    filters.extend(filter_parser::parse(first));
+                }
             }
         }
 
@@ -106,6 +228,8 @@ pub struct AlgoliaHit {
     pub object_id: String,
     #[serde(rename = "_score")]
     pub score: f32,
+    #[serde(rename = "_highlightResult")]
+    pub highlight_result: Map<String, Value>,
     #[serde(flatten)]
     pub attributes: Map<String, Value>,
 }
@@ -123,7 +247,12 @@ pub fn to_algolia_response(
         ((resp.total as usize).saturating_add(hits_per_page - 1)) / hits_per_page
     };
 
-    let hits = resp.hits.into_iter().map(hit_to_algolia).collect();
+    let tokens: Vec<&str> = req.query.split_whitespace().collect();
+    let hits = resp
+        .hits
+        .into_iter()
+        .map(|h| hit_to_algolia(h, &tokens, &req.highlight_pre_tag, &req.highlight_post_tag))
+        .collect();
 
     let facets = resp.aggregations.map(|agg| {
         agg.into_iter()
@@ -152,8 +281,7 @@ pub fn to_algolia_response(
     }
 }
 
-fn hit_to_algolia(h: Hit) -> AlgoliaHit {
-    // Flatten metadata object onto the hit — Algolia returns attributes at the top level.
+fn hit_to_algolia(h: Hit, tokens: &[&str], pre: &str, post: &str) -> AlgoliaHit {
     let attributes: Map<String, Value> = match h.metadata {
         Value::Object(o) => o,
         other => {
@@ -162,7 +290,8 @@ fn hit_to_algolia(h: Hit) -> AlgoliaHit {
             m
         }
     };
-    AlgoliaHit { object_id: h.id, score: h.score, attributes }
+    let highlight_result = build_highlight_result(&attributes, tokens, pre, post);
+    AlgoliaHit { object_id: h.id, score: h.score, highlight_result, attributes }
 }
 
 // ── Multi-search ──────────────────────────────────────────────────────────────

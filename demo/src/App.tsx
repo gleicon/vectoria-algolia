@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { liteClient } from 'algoliasearch/lite'
 import {
   InstantSearch,
@@ -21,6 +22,22 @@ const searchClient = liteClient('local', 'local', {
     accept: 'readWrite' as const,
   }],
 })
+
+function ScoreLogger() {
+  const { results } = useInstantSearch()
+  useEffect(() => {
+    if (!results || results.hits.length === 0) return
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const top10 = results.hits.slice(0, 10).map((h: any, i: number) => ({
+      rank: i + 1,
+      score: typeof h._score === 'number' ? h._score.toFixed(4) : '—',
+      title: String(h.title ?? '').slice(0, 45),
+      id: h.objectID,
+    }))
+    console.table(top10)
+  }, [results])
+  return null
+}
 
 function EmptyState() {
   const { results } = useInstantSearch()
@@ -47,6 +64,7 @@ export default function App() {
   return (
     <InstantSearch searchClient={searchClient} indexName="products" insights={false}>
       <Configure hitsPerPage={12} />
+      <ScoreLogger />
 
       {/* Header */}
       <header className="bg-white border-b border-zinc-200 sticky top-0 z-10">

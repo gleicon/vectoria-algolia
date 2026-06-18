@@ -1,60 +1,83 @@
 # vectoria-algolia
 
-Algolia-compatible HTTP adapter for [Vectoria](https://github.com/gleicon/vectoria). Lets you use any Algolia client or InstantSearch widget against a Vectoria search engine — no Algolia account required.
+HTTP search adapter for [Vectoria](https://github.com/gleicon/vectoria) that speaks the same search protocol used by [Algolia Search](https://www.algolia.com/), [Typesense](https://typesense.org/), and other engines that support the [InstantSearch](https://www.algolia.com/doc/guides/building-search-ui/what-is-instantsearch/js/) widget ecosystem.
 
-## What it implements
+Point an existing InstantSearch, autocomplete, or `algoliasearch` client at `localhost:8108` instead of `algolia.net` and it works without code changes beyond the host override.
 
-The minimal surface that InstantSearch needs:
+---
 
-| Endpoint | Purpose |
-|----------|---------|
-| `POST /1/indexes/{name}/query` | Single-index search — used by most InstantSearch widgets |
-| `POST /1/indexes/*/queries` | Multi-search batch — used when multiple widgets share a search client |
+## Compatibility
 
-Response shape matches what `algoliasearch` and `@algolia/client-search` expect: `hits`, `nbHits`, `page`, `nbPages`, `hitsPerPage`, `facets`, `processingTimeMS`, `queryID`.
+This project implements the HTTP search protocol independently, based on the publicly documented [Algolia Search REST API](https://www.algolia.com/doc/rest-api/search/) and the open-source [InstantSearch](https://github.com/algolia/instantsearch) libraries (Apache 2.0). No Algolia account or credentials are required.
 
-## What it does NOT implement
+The same protocol is also supported, to varying degrees, by:
+- [Typesense](https://typesense.org/docs/guide/algolia-migration.html) — open-source search engine with an Algolia-compatible adapter
+- [Meilisearch](https://www.meilisearch.com/) — open-source search engine with a similar query model
+- [OpenSearch](https://opensearch.org/) — via community plugins
 
-- Highlights / snippets (`_highlightResult`, `_snippetResult`)
-- Rules, Synonyms, A/B testing
-- Analytics API (`POST /1/events`)
-- Index management (`PUT /1/indexes/{name}/settings`)
-- `OR` / `NOT` in filter strings — only `AND` chains
+_Algolia_ is a registered trademark of Algolia, Inc. _InstantSearch_ libraries are open-source and maintained by Algolia under the Apache 2.0 license.
 
-## Getting started
+---
+
+## What is implemented
+
+| Feature | Notes |
+|---------|-------|
+| `POST /1/indexes/{name}/query` | Single-index search |
+| `POST /1/indexes/*/queries` | Multi-search batch — used by InstantSearch internally |
+| `PUT /1/indexes/{name}/objects/{id}` | Index a single object |
+| `POST /1/indexes/{name}/batch` | Batch index / delete |
+| `hits`, `nbHits`, `page`, `nbPages`, `hitsPerPage` | Standard response envelope |
+| `facets` | Aggregated counts per field |
+| `facetFilters` | `[["attr:val"]]` nested-array syntax from `RefinementList` |
+| `filters` | `brand:Nike AND price >= 100` string syntax |
+| `numericFilters` | Array of numeric range strings |
+| `_highlightResult` | Per-field `value` / `matchLevel` / `matchedWords` / `fullyHighlighted` |
+| Custom `highlightPreTag` / `highlightPostTag` | Defaults to AIS tags used by `<Highlight>` |
+| `processingTimeMS`, `queryID`, `exhaustiveNbHits` | Present on every response |
+| `searchMode` | Non-standard extension: `hybrid` (default) / `semantic` / `bm25` |
+
+## What is NOT implemented
+
+| Feature | Notes |
+|---------|-------|
+| `_snippetResult` | Not yet |
+| Rules, Synonyms, A/B testing | Out of scope |
+| Analytics (`POST /1/events`) | Accepted but ignored |
+| Index settings (`PUT /1/indexes/{name}/settings`) | Out of scope |
+| `OR` / `NOT` in filter strings | Only `AND` chains |
+
+---
+
+## Quick start
 
 ```sh
 git clone https://github.com/gleicon/vectoria-algolia
 cd vectoria-algolia
-cargo build --release
-./target/release/vectoria-algolia
+docker compose up --build
+docker compose --profile load run --rm loader   # load 550 sample products
+open http://localhost:8108
 ```
 
-Default port: **8108**. Override with `PORT=...`.
+See **[PLAYBOOK.md](PLAYBOOK.md)** for the full runbook: local dev, API reference, filter syntax, quality evaluation.
 
-Environment variables:
+---
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `HOST` | `0.0.0.0` | Bind address |
-| `PORT` | `8108` | Listen port |
-| `VECTORIA_INDEX` | `products` | Default index name — must match your frontend's index name |
+## Wiring up an existing InstantSearch app
 
-## Wiring up InstantSearch
-
-### Option A — `algoliasearch` v5 with custom host (recommended)
+### algoliasearch v5 (recommended)
 
 ```ts
-import { liteClient } from 'algoliasearch/lite';
+import { liteClient } from 'algoliasearch/lite'
 
-const searchClient = liteClient('unused-app-id', 'unused-api-key', {
-  hosts: [{ url: 'localhost:8108', protocol: 'http' }],
-});
+const searchClient = liteClient('local', 'local', {
+  hosts: [{ url: 'localhost:8108', protocol: 'http', accept: 'readWrite' }],
+})
 ```
 
-Drop this `searchClient` into any InstantSearch app. The app ID and key are never validated.
+Drop this `searchClient` into any `<InstantSearch>` tree. The app ID and key fields are accepted but never validated.
 
-### Option B — custom `searchClient` adapter (zero dependencies)
+### Custom adapter (zero dependencies)
 
 ```ts
 const searchClient = {
@@ -63,91 +86,137 @@ const searchClient = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ requests }),
-    }).then(r => r.json());
+    }).then(r => r.json())
   },
-};
+}
 ```
 
-Pass this to `<InstantSearch searchClient={searchClient} indexName="products" />`.
+### Quickstart repos
 
-## Connecting to the product-search-react-typescript quickstart
-
-Reference: <https://github.com/algolia/quickstarts/tree/main/product-search-react-typescript>
-
-1. Clone the quickstart.
-2. In `.env.local`, replace the Algolia credentials with dummy values:
-
-```env
-VITE_ALGOLIA_APP_ID=local
-VITE_ALGOLIA_SEARCH_KEY=local
-VITE_ALGOLIA_INDEX_NAME=products
-```
-
-3. In `src/main.tsx` (or wherever `algoliasearch` is instantiated), add a custom hosts override:
-
+**product-search-react-typescript** — `src/main.tsx`:
 ```ts
-import { liteClient } from 'algoliasearch/lite';
-
 const searchClient = liteClient(
   import.meta.env.VITE_ALGOLIA_APP_ID,
   import.meta.env.VITE_ALGOLIA_SEARCH_KEY,
   { hosts: [{ url: 'localhost:8108', protocol: 'http' }] }
-);
+)
 ```
 
-4. Import your product data into Vectoria, then start `vectoria-algolia`.
-
-## Next.js + InstantSearch starter
-
-Reference: <https://www.algolia.com/developers/code-exchange/instantsearch-and-next-js-starter>
-
-In `src/lib/algolia.ts` (or equivalent):
-
+**Next.js + InstantSearch starter** — `src/lib/algolia.ts`:
 ```ts
-import { liteClient } from 'algoliasearch/lite';
-
 export const searchClient = liteClient('local', 'local', {
   hosts: [{ url: process.env.NEXT_PUBLIC_SEARCH_URL ?? 'localhost:8108', protocol: 'http' }],
-});
+})
 ```
 
 Set `NEXT_PUBLIC_SEARCH_URL=localhost:8108` in `.env.local`.
 
-## Filter syntax
+---
 
-Vectoria-algolia understands the subset of Algolia's filter syntax used by `RefinementList`, `NumericMenu`, and `RangeSlider`:
+## Tests
 
+Three test layers ship with the project.
+
+### Rust integration tests
+
+Uses a stub embedding provider — no model download, runs in milliseconds.
+
+```sh
+cargo test
 ```
-brand:Nike                         → {"brand": "Nike"}
-in_stock:true                      → {"in_stock": true}
-price >= 100                       → {"price_min": 100}
-price < 200                        → {"price_max": 199}
-brand:Nike AND price >= 50         → {"brand": "Nike", "price_min": 50}
+
+**Latest results (16 tests, 0 failed):**
+
+| Category | Test | |
+|----------|------|-|
+| Indexing | PUT single object returns 200 + objectID | ✓ |
+| Indexing | PUT to unknown index returns 404 | ✓ |
+| Indexing | batch indexes multiple objects | ✓ |
+| Search | query returns hits and nbHits | ✓ |
+| Search | unknown index returns 404 | ✓ |
+| Search | pagination fields present | ✓ |
+| Filters | `filters` string restricts by category | ✓ |
+| Filters | price range filter | ✓ |
+| Facets | `facets` param returns aggregated counts | ✓ |
+| Facets | `facetFilters` restricts results | ✓ |
+| `_highlightResult` | present on every hit | ✓ |
+| `_highlightResult` | AIS tags wrap matched token | ✓ |
+| `_highlightResult` | empty query → `matchLevel: none` | ✓ |
+| Multi-search | two requests → two independent results | ✓ |
+| Multi-search | unknown index returns 404 | ✓ |
+| Multi-search | disjunctive: filtered ≤ unfiltered nbHits | ✓ |
+
+### Client compatibility tests (Node.js)
+
+Uses the real `algoliasearch` v5 `liteClient` against a live server. Verifies the wire format as a client application would see it.
+
+**Single command (Docker):**
+```sh
+docker compose --profile test up --build --exit-code-from test
 ```
 
-`OR` and `NOT` are not parsed — filtered out silently.
+Or locally, with a server already running:
+```sh
+cd tests/client && npx vitest run
+```
+
+**Latest results (20 tests, exit code 0):**
+
+| Category | Test | |
+|----------|------|-|
+| Search | returns `hits` array and `nbHits` | ✓ |
+| Search | every hit has `objectID` | ✓ |
+| Search | empty query returns all documents | ✓ |
+| Search | `hitsPerPage` is respected | ✓ |
+| Search | `page` / `nbPages` fields present | ✓ |
+| `_highlightResult` | present on every hit | ✓ |
+| `_highlightResult` | per-field `value` / `matchLevel` / `matchedWords` | ✓ |
+| `_highlightResult` | AIS tags wrap matched token in field value | ✓ |
+| `_highlightResult` | empty query → `matchLevel: none` | ✓ |
+| `_highlightResult` | custom `highlightPreTag` / `highlightPostTag` | ✓ |
+| Filters | string filter restricts by category | ✓ |
+| Filters | price range filter | ✓ |
+| `facetFilters` | nested-array `[["attr:val"]]` syntax | ✓ |
+| Facets | counts returned when `facets` param is set | ✓ |
+| Facets | counts are positive integers | ✓ |
+| Multi-search | one result per request | ✓ |
+| Multi-search | each result has `hits` and `nbHits` | ✓ |
+| Multi-search | disjunctive: filtered ≤ unfiltered `nbHits` | ✓ |
+| Pagination | page 1 returns different hits than page 0 | ✓ |
+| Clear refinements | unfiltered `nbHits` > filtered `nbHits` | ✓ |
+
+### Search quality evaluation
+
+Measures ranking quality against a 30-query benchmark set using NDCG@10, MRR, and Precision@5. Requires a running server with products loaded.
+
+```sh
+python3 scripts/quality_eval.py
+```
+
+**Baseline (550 products, hybrid search):**
+```
+MACRO AVERAGE   NDCG@10=0.866   MRR=0.870   P@5=0.807
+```
+
+See [PLAYBOOK.md § Search quality evaluation](PLAYBOOK.md#search-quality-evaluation) for the full query set and per-query breakdown.
+
+---
 
 ## Non-standard extension: `searchMode`
 
-Pass `"searchMode": "semantic"` or `"searchMode": "bm25"` in the query body to override Vectoria's default hybrid mode:
+Pass `"searchMode"` in any query body to override the default hybrid ranking:
 
 ```json
 { "query": "running shoes", "hitsPerPage": 10, "searchMode": "semantic" }
 ```
 
-## Switching to crates.io vectoria-core
+| Value | Behaviour |
+|-------|-----------|
+| `hybrid` | BM25 + vector, re-ranked (default) |
+| `semantic` | Vector-only |
+| `bm25` | Keyword-only, no embeddings |
 
-While iterating locally the `Cargo.toml` uses a path dependency:
-
-```toml
-vectoria-core = { path = "../vectoria/vectoria-core" }
-```
-
-Switch to the published crate before deploying:
-
-```toml
-vectoria-core = "0.1.7"
-```
+---
 
 ## License
 

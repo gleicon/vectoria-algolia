@@ -9,31 +9,40 @@ COPY demo/ ./
 RUN npm run build
 
 # ── Stage 2: Build Rust binary ────────────────────────────────────────────────
-FROM rust:1.88-slim AS rust-builder
+FROM rust:1.95-slim AS rust-builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    pkg-config libssl-dev ca-certificates \
+    pkg-config libssl-dev ca-certificates g++ \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
 
-# Copy only Cargo.toml — not Cargo.lock.
-# The local lock file encodes a path dep for vectoria-core and pins edgestore 1.0.4,
-# which has a Linux/Rust-1.88 compile bug in fdp_backend.rs.
-# Let cargo resolve fresh, then pin edgestore to 1.0.2 before building.
+# Do not copy Cargo.lock — the local one encodes a path dep for vectoria-core
+# and would conflict after the sed patch below.
 COPY Cargo.toml ./
 
 # Patch vectoria-core to use crates.io version for Docker builds.
 ARG VECTORIA_CORE_VERSION=0.1.7
 RUN sed -i "s|vectoria-core = { path = \"../vectoria/vectoria-core\" }|vectoria-core = \"${VECTORIA_CORE_VERSION}\"|" Cargo.toml
 
-# Warm the dependency cache with a stub binary, then pin edgestore.
+# Warm dep cache with a stub binary so the real build only recompiles our code.
 RUN mkdir -p src && echo 'fn main(){}' > src/main.rs && echo '' > src/lib.rs
 RUN cargo fetch
-# edgestore 1.0.4 has a fdp_backend.rs bug that breaks on Linux with Rust 1.88.
-# Pin to 1.0.2 which is clean on all platforms.
-RUN cargo update edgestore --precise 1.0.2
+
+# Patch edgestore's fdp_backend.rs — all 1.0.x versions have a Linux-only bug:
+#   `if let Ok(_fd) = as_raw_fd(...)` where as_raw_fd() returns i32, not Result.
+# Rust 1.88 made this a hard E0308 error. The file is #[cfg(target_os = "linux")]
+# so it never compiled on macOS. Fix: replace the if-let with a plain let,
+# keeping the braces intact so the block structure is preserved.
+RUN find /usr/local/cargo/registry/src -name "fdp_backend.rs" -path "*/edgestore-*" -print0 | \
+    xargs -0 -I{} sed -i \
+      -e 's/if let Ok(_fd) = std::os::fd::AsRawFd::as_raw_fd(/let _fd = std::os::fd::AsRawFd::as_raw_fd(/' \
+      -e 's/^            ) {$/            ); if true {/' \
+      {}
+
 RUN cargo build --release 2>/dev/null; true
+# Remove fingerprints for our own crates so the real source triggers a recompile.
+RUN find target/release/.fingerprint -maxdepth 1 -name "vectoria*" -exec rm -rf {} + 2>/dev/null; true
 RUN rm src/main.rs src/lib.rs
 
 # Build the real binary
@@ -44,15 +53,14 @@ RUN cargo build --release
 FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates libssl3 curl \
+    ca-certificates libssl3 curl jq \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 COPY --from=rust-builder /build/target/release/vectoria-algolia ./vectoria-algolia
 COPY --from=demo-builder /demo/dist ./static
-COPY scripts/products.json ./scripts/products.json
-COPY scripts/load_products.sh ./scripts/load_products.sh
+COPY scripts/ ./scripts/
 
 ENV HOST=0.0.0.0
 ENV PORT=8108

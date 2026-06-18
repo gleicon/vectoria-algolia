@@ -24,13 +24,21 @@ services:
         condition: service_healthy
     volumes:
       - ./scripts:/scripts:ro
-    entrypoint: ["sh", "-c"]
-    command:
-      - |
-        apk add --no-cache curl jq 2>/dev/null || apt-get install -y curl jq 2>/dev/null || true
-        /scripts/load_products.sh http://search:8108 products
+    entrypoint: ["/scripts/load_products.sh", "http://search:8108", "products"]
     profiles:
       - load
+
+  test:
+    build:
+      context: tests/client
+      dockerfile: Dockerfile
+    depends_on:
+      search:
+        condition: service_healthy
+    environment:
+      SERVER_URL: "http://search:8108"
+    profiles:
+      - test
 
 volumes:
   vectoria-data:

@@ -241,3 +241,76 @@ cargo test
 - 3 ingest unit tests
 - 11 route integration tests (axum + stub embedding, no model download)
 - 8 doc tests
+
+---
+
+## Search quality evaluation
+
+`scripts/quality_eval.py` measures ranking quality against a curated 30-query test set.
+No extra dependencies — stdlib only (Python 3.7+).
+
+### Metrics
+
+| Metric | What it measures |
+|--------|-----------------|
+| **NDCG@10** | Ranking quality — high-relevance results ranked near the top score higher |
+| **MRR** | Mean Reciprocal Rank — how high the first relevant result appears |
+| **P@5** | Precision at 5 — fraction of the top 5 hits that are relevant |
+
+Each hit is graded 0–3 by a relevance function (category match, keyword match, brand match).
+
+### Running
+
+```sh
+# Server must be running and products loaded first
+python3 scripts/quality_eval.py
+
+# Custom server / index
+python3 scripts/quality_eval.py --server http://localhost:8108 --index products
+
+# Show top-5 hits with grades per query
+python3 scripts/quality_eval.py --verbose
+```
+
+### Query set
+
+30 queries across five types:
+
+| Type | Count | Example |
+|------|-------|---------|
+| Category navigation | 8 | `running shoe`, `espresso machine` |
+| Brand search | 6 | `Sony headphones`, `Patagonia jacket` |
+| Attribute / feature | 6 | `noise cancelling`, `waterproof`, `4K` |
+| Facet-filtered | 4 | empty query + `category:Electronics` |
+| Semantic / long-tail | 6 | `gift for runner`, `home office setup` |
+
+### Baseline results (550-product dataset)
+
+```
+MACRO AVERAGE   NDCG@10=0.866   MRR=0.870   P@5=0.807
+```
+
+Known weak queries and root causes:
+
+| Query | NDCG | Cause |
+|-------|------|-------|
+| facet-only browsing | 0.000 | requires `facetFilters` support (deploy latest image) |
+| "home office setup" | 0.000 | conceptual query — no product contains those exact terms |
+| "healthy cooking" | 0.289 | indirect intent: signal is weak between query and Kitchen & Home |
+
+### Adding queries
+
+Append to the `QUERIES` list in `quality_eval.py`. Each entry is a 5-tuple:
+
+```python
+(query_string, hits_per_page, facet_filters, grade_fn, description)
+```
+
+Built-in grade helpers:
+
+```python
+_cat("Electronics")                        # relevant if category matches
+_cat_kw("Footwear", "running", "trail")    # perfect if category + keyword; partial if category only
+_brand_cat("Sony", "Electronics")          # grades by brand + category match
+_kw("waterproof", cats=["Clothing"])       # relevant if keyword in title/description
+```
