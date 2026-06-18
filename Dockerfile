@@ -24,7 +24,7 @@ WORKDIR /build
 COPY Cargo.toml ./
 
 # Patch vectoria-core to use crates.io version for Docker builds.
-ARG VECTORIA_CORE_VERSION=0.1.7
+ARG VECTORIA_CORE_VERSION=1.0.7
 RUN sed -i "s|vectoria-core = { path = \"../vectoria/vectoria-core\" }|vectoria-core = \"${VECTORIA_CORE_VERSION}\"|" Cargo.toml
 
 # Warm the dependency cache with a stub binary, then pin edgestore.

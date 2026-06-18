@@ -146,7 +146,7 @@ vectoria-core = { path = "../vectoria/vectoria-core" }
 Switch to the published crate before deploying:
 
 ```toml
-vectoria-core = "0.1.6"
+vectoria-core = "1.0.7"
 ```
 
 ## License

@@ -16,7 +16,8 @@ name = "vectoria_algolia"
 path = "src/lib.rs"
 
 [dependencies]
-# Vectoria core — use path for local dev; switch to crates.io before publishing
+# Vectoria core — use path for local dev; Docker build patches this to crates.io version
+# To use published crate: vectoria-core = "1.0.7"
 vectoria-core = { path = "../vectoria/vectoria-core" }
 
 # Async runtime
