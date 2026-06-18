@@ -17,16 +17,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /build
 
-# Copy Cargo manifests
-COPY Cargo.toml Cargo.lock ./
+# Copy only Cargo.toml — not Cargo.lock.
+# The local lock file encodes a path dep for vectoria-core and pins edgestore 1.0.4,
+# which has a Linux/Rust-1.88 compile bug in fdp_backend.rs.
+# Let cargo resolve fresh, then pin edgestore to 1.0.2 before building.
+COPY Cargo.toml ./
 
 # Patch vectoria-core to use crates.io version for Docker builds.
-# For local dev builds the path dep is used; in Docker we override it.
 ARG VECTORIA_CORE_VERSION=0.1.6
 RUN sed -i "s|vectoria-core = { path = \"../vectoria/vectoria-core\" }|vectoria-core = \"${VECTORIA_CORE_VERSION}\"|" Cargo.toml
 
-# Warm the dependency cache
+# Warm the dependency cache with a stub binary, then pin edgestore.
 RUN mkdir -p src && echo 'fn main(){}' > src/main.rs && echo '' > src/lib.rs
+RUN cargo fetch
+# edgestore 1.0.4 has a fdp_backend.rs bug that breaks on Linux with Rust 1.88.
+# Pin to 1.0.2 which is clean on all platforms.
+RUN cargo update edgestore --precise 1.0.2
 RUN cargo build --release 2>/dev/null; true
 RUN rm src/main.rs src/lib.rs
 
