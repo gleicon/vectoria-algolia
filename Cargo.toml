@@ -11,6 +11,10 @@ description = "Algolia-compatible API adapter for Vectoria — drop-in for Insta
 name = "vectoria-algolia"
 path = "src/main.rs"
 
+[lib]
+name = "vectoria_algolia"
+path = "src/lib.rs"
+
 [dependencies]
 # Vectoria core — use path for local dev; switch to crates.io before publishing
 vectoria-core = { path = "../vectoria/vectoria-core" }
@@ -20,7 +24,7 @@ tokio = { version = "1", features = ["full"] }
 
 # HTTP server
 axum = { version = "0.8", features = ["macros"] }
-tower-http = { version = "0.6", features = ["cors", "trace"] }
+tower-http = { version = "0.6", features = ["cors", "trace", "fs"] }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -38,3 +42,11 @@ uuid = { version = "1", features = ["v4"] }
 
 # URL-encoded params (multi-search legacy format)
 serde_urlencoded = "0.7"
+
+# Async traits (needed for EmbeddingProvider in tests)
+async-trait = "0.1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"

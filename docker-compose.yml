@@ -1,0 +1,36 @@
+services:
+  search:
+    build: .
+    ports:
+      - "8108:8108"
+    volumes:
+      - vectoria-data:/data
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "8108"
+      VECTORIA_INDEX: "products"
+      STATIC_DIR: "/app/static"
+    healthcheck:
+      test: ["CMD", "sh", "-c", "curl -sf http://localhost:8108/1/indexes/products/query -X POST -H 'Content-Type: application/json' -d '{\"query\":\"\",\"hitsPerPage\":1}' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  loader:
+    build: .
+    depends_on:
+      search:
+        condition: service_healthy
+    volumes:
+      - ./scripts:/scripts:ro
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        apk add --no-cache curl jq 2>/dev/null || apt-get install -y curl jq 2>/dev/null || true
+        /scripts/load_products.sh http://search:8108 products
+    profiles:
+      - load
+
+volumes:
+  vectoria-data:

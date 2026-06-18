@@ -1,0 +1,76 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-zinc-50 text-zinc-900 antialiased;
+  }
+}
+
+/* InstantSearch resets */
+.ais-SearchBox-form {
+  @apply relative flex;
+}
+.ais-SearchBox-input {
+  @apply w-full border border-zinc-300 rounded-lg px-4 py-2.5 pr-10 text-sm
+         bg-white focus:outline-none focus:ring-2 focus:ring-zinc-800 focus:border-transparent
+         placeholder:text-zinc-400;
+}
+.ais-SearchBox-submit,
+.ais-SearchBox-reset {
+  @apply absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-700;
+}
+.ais-SearchBox-submit svg,
+.ais-SearchBox-reset svg {
+  @apply w-4 h-4;
+}
+
+.ais-RefinementList-list {
+  @apply space-y-1.5;
+}
+.ais-RefinementList-item {
+  @apply flex items-center gap-2 text-sm;
+}
+.ais-RefinementList-checkbox {
+  @apply rounded border-zinc-300 text-zinc-800 focus:ring-zinc-500;
+}
+.ais-RefinementList-label {
+  @apply flex items-center gap-2 cursor-pointer text-zinc-700 hover:text-zinc-900 flex-1;
+}
+.ais-RefinementList-count {
+  @apply ml-auto text-xs text-zinc-400 bg-zinc-100 px-1.5 py-0.5 rounded-full font-mono;
+}
+.ais-RefinementList-item--selected .ais-RefinementList-label {
+  @apply text-zinc-900 font-medium;
+}
+.ais-RefinementList-showMore {
+  @apply text-xs text-zinc-500 hover:text-zinc-700 mt-2 underline;
+}
+
+.ais-Pagination-list {
+  @apply flex gap-1 items-center;
+}
+.ais-Pagination-item--page .ais-Pagination-link,
+.ais-Pagination-item--previousPage .ais-Pagination-link,
+.ais-Pagination-item--nextPage .ais-Pagination-link {
+  @apply inline-flex items-center justify-center w-8 h-8 rounded text-sm
+         border border-zinc-200 text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900;
+}
+.ais-Pagination-item--selected .ais-Pagination-link {
+  @apply bg-zinc-900 text-white border-zinc-900;
+}
+.ais-Pagination-item--disabled .ais-Pagination-link {
+  @apply opacity-30 cursor-not-allowed;
+}
+
+.ais-Stats-text {
+  @apply text-xs text-zinc-500 font-mono;
+}
+
+.ais-ClearRefinements-button {
+  @apply text-xs text-zinc-500 hover:text-red-600 underline;
+}
+.ais-ClearRefinements-button--disabled {
+  @apply opacity-40 cursor-not-allowed no-underline;
+}
