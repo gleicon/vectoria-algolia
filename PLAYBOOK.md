@@ -329,14 +329,23 @@ No extra dependencies — stdlib only.
 
 [https://github.com/wayfair/WANDS](https://github.com/wayfair/WANDS) (Apache-2.0)
 
+**Docker (recommended):**
 ```sh
-# Load all products and run quality eval with real WANDS labels
+# Start server, load all WANDS products, run quality eval
+docker compose up --build -d
+docker compose --profile wands run --rm wands
+
+# Custom options via COMMAND override
+docker compose --profile wands run --rm wands \
+  python3 /scripts/wands_setup.py --server http://search:8108 \
+  --max-products 5000 --max-queries 50 --eval
+```
+
+**Local:**
+```sh
+# Server must be running
 python3 scripts/wands_setup.py --eval
-
-# Limit to 5 000 products, evaluate 50 queries
 python3 scripts/wands_setup.py --max-products 5000 --max-queries 50 --eval
-
-# Skip loading (products already in), just evaluate
 python3 scripts/wands_setup.py --skip-load --eval --verbose
 ```
 
@@ -344,24 +353,37 @@ python3 scripts/wands_setup.py --skip-load --eval --verbose
 
 ~482K English products, real e-commerce search queries with E/S/C/I relevance
 labels (Exact / Substitute / Complement / Irrelevant).
-Requires pandas for parquet parsing; files cached locally after first download.
+Parquet files (~200 MB) are downloaded once and cached in a Docker volume.
 
 [https://github.com/amazon-science/esci-data](https://github.com/amazon-science/esci-data) (Apache-2.0)
 
+**Docker (recommended — pandas/pyarrow pre-installed in image):**
 ```sh
-pip install pandas pyarrow
-
-# Download (~200 MB, cached), load 5 000 products, evaluate 200 queries
-python3 scripts/esci_setup.py --eval
+# Build image (first run), download ESCI, load 5 000 products, eval 200 queries
+docker compose up --build -d
+docker compose --profile esci run --rm esci
 
 # Load 20 000 products
-python3 scripts/esci_setup.py --max-products 20000 --eval
+docker compose --profile esci run --rm esci \
+  python3 /scripts/esci_setup.py --server http://search:8108 \
+  --max-products 20000 --eval --cache-dir /scripts/.esci_cache
 
-# Skip loading, evaluate only
+# Skip loading (parquet already cached in volume), eval only
+docker compose --profile esci run --rm esci \
+  python3 /scripts/esci_setup.py --server http://search:8108 \
+  --skip-load --eval --verbose --cache-dir /scripts/.esci_cache
+```
+
+**Local:**
+```sh
+pip install pandas pyarrow
+python3 scripts/esci_setup.py --eval
+python3 scripts/esci_setup.py --max-products 20000 --eval
 python3 scripts/esci_setup.py --skip-load --eval --verbose
 ```
 
-Parquet files are cached in `.esci_cache/` (override with `--cache-dir`).
+Parquet files are cached in `.esci_cache/` locally or the `esci-cache` Docker
+volume between runs — subsequent runs skip the download.
 
 ### Notes
 

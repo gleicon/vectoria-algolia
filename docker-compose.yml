@@ -28,6 +28,35 @@ services:
     profiles:
       - load
 
+  wands:
+    image: python:3.11-slim
+    depends_on:
+      search:
+        condition: service_healthy
+    volumes:
+      - ./scripts:/scripts:ro
+    environment:
+      SERVER_URL: "http://search:8108"
+    command: ["python3", "/scripts/wands_setup.py", "--server", "http://search:8108", "--eval"]
+    profiles:
+      - wands
+
+  esci:
+    build:
+      context: scripts
+      dockerfile: Dockerfile.esci
+    depends_on:
+      search:
+        condition: service_healthy
+    volumes:
+      - ./scripts:/scripts:ro
+      - esci-cache:/scripts/.esci_cache
+    environment:
+      SERVER_URL: "http://search:8108"
+    command: ["python3", "/scripts/esci_setup.py", "--server", "http://search:8108", "--eval", "--cache-dir", "/scripts/.esci_cache"]
+    profiles:
+      - esci
+
   test:
     build:
       context: tests/client
@@ -42,3 +71,4 @@ services:
 
 volumes:
   vectoria-data:
+  esci-cache:
