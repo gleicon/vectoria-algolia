@@ -165,7 +165,7 @@ OR and NOT are not supported.
 import { liteClient } from 'algoliasearch/lite'
 
 const searchClient = liteClient('unused', 'unused', {
-  hosts: [{ url: 'localhost:8108', protocol: 'http' }],
+  hosts: [{ url: 'localhost:8108', protocol: 'http', accept: 'readWrite' }],
 })
 ```
 
@@ -192,7 +192,7 @@ In `src/main.tsx`:
 ```ts
 import { liteClient } from 'algoliasearch/lite'
 const searchClient = liteClient('local', 'local', {
-  hosts: [{ url: 'localhost:8108', protocol: 'http' }],
+  hosts: [{ url: 'localhost:8108', protocol: 'http', accept: 'readWrite' }],
 })
 ```
 

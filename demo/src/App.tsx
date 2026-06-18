@@ -15,7 +15,11 @@ import { Hit } from './Hit'
 // Vite dev server proxies /1/* → localhost:8108 so we can use the same origin.
 // In production (Docker), STATIC_DIR serves this build from the search server itself.
 const searchClient = liteClient('local', 'local', {
-  hosts: [{ url: window.location.host, protocol: window.location.protocol.replace(':', '') as 'http' | 'https' }],
+  hosts: [{
+    url: window.location.host,
+    protocol: window.location.protocol.replace(':', '') as 'http' | 'https',
+    accept: 'readWrite' as const,
+  }],
 })
 
 function EmptyState() {
