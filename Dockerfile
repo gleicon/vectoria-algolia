@@ -9,7 +9,7 @@ COPY demo/ ./
 RUN npm run build
 
 # ── Stage 2: Build Rust binary ────────────────────────────────────────────────
-FROM rust:1.80-slim AS rust-builder
+FROM rust:1.85-slim AS rust-builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config libssl-dev ca-certificates \
