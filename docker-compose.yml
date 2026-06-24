@@ -35,9 +35,10 @@ services:
         condition: service_healthy
     volumes:
       - ./scripts:/scripts:ro
+      - wands-cache:/tmp/wands_cache
     environment:
       SERVER_URL: "http://search:8108"
-    command: ["python3", "/scripts/wands_setup.py", "--server", "http://search:8108", "--eval"]
+    command: ["python3", "/scripts/wands_setup.py", "--server", "http://search:8108", "--cache-dir", "/tmp/wands_cache", "--eval"]
     profiles:
       - wands
 
@@ -71,4 +72,5 @@ services:
 
 volumes:
   vectoria-data:
+  wands-cache:
   esci-cache:

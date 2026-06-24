@@ -65,11 +65,23 @@ def _in_stock(product_id: str) -> bool:
     return abs(hash(product_id + "stock")) % 10 > 1  # ~80% in stock
 
 
-def download(url: str) -> str:
+def download_cached(url: str, cache_dir: Optional[str]) -> str:
+    if cache_dir:
+        name = url.rsplit("/", 1)[-1]
+        path = Path(cache_dir) / name
+        if path.exists():
+            print(f"  cached: {path}")
+            return path.read_text(encoding="utf-8")
+        Path(cache_dir).mkdir(parents=True, exist_ok=True)
+
     print(f"  downloading {url} ...", flush=True)
     req = urllib.request.Request(url, headers={"User-Agent": "vectoria-wands-setup/1.0"})
     with urllib.request.urlopen(req, timeout=60) as r:
-        return r.read().decode("utf-8")
+        text = r.read().decode("utf-8")
+
+    if cache_dir:
+        path.write_text(text, encoding="utf-8")
+    return text
 
 
 def load_products(text: str) -> List[dict]:
@@ -227,6 +239,8 @@ def main() -> None:
                     help="Limit products loaded (0 = all ~42K)")
     ap.add_argument("--max-queries",  type=int, default=100,
                     help="Queries to evaluate (default 100)")
+    ap.add_argument("--cache-dir",    default="",
+                    help="Directory to cache downloaded CSV files (default: no cache)")
     ap.add_argument("--skip-load",    action="store_true",
                     help="Skip loading — only run quality eval")
     ap.add_argument("--eval",         action="store_true",
@@ -234,9 +248,11 @@ def main() -> None:
     ap.add_argument("--verbose",      action="store_true")
     args = ap.parse_args()
 
+    cache = args.cache_dir or None
+
     if not args.skip_load:
         print("Downloading WANDS products ...")
-        products = load_products(download(PRODUCTS_URL))
+        products = load_products(download_cached(PRODUCTS_URL, cache))
         if args.max_products:
             products = products[:args.max_products]
         print(f"  {len(products)} products ready")
@@ -247,8 +263,8 @@ def main() -> None:
 
     if args.eval or args.skip_load:
         print("Downloading WANDS queries and labels ...")
-        queries = load_queries(download(QUERIES_URL))
-        labels  = load_labels(download(LABELS_URL))
+        queries = load_queries(download_cached(QUERIES_URL, cache))
+        labels  = load_labels(download_cached(LABELS_URL, cache))
         print(f"  {len(queries)} queries, "
               f"{sum(len(v) for v in labels.values())} label pairs")
         evaluate(

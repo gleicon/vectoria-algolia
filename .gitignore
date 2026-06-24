@@ -1,5 +1,7 @@
 /target
 .fastembed_cache/
+.wands_cache/
+.esci_cache/
 node_modules/
 demo/node_modules/
 demo/dist/
