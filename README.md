@@ -195,7 +195,7 @@ python3 scripts/quality_eval.py
 
 **Baseline (550 products, hybrid search):**
 ```
-MACRO AVERAGE   NDCG@10=0.866   MRR=0.870   P@5=0.807
+MACRO AVERAGE   NDCG@10=0.930   MRR=0.910   P@5=0.867
 ```
 
 See [PLAYBOOK.md § Search quality evaluation](PLAYBOOK.md#search-quality-evaluation) for the full query set and per-query breakdown.

@@ -287,16 +287,16 @@ python3 scripts/quality_eval.py --verbose
 ### Baseline results (550-product dataset)
 
 ```
-MACRO AVERAGE   NDCG@10=0.866   MRR=0.870   P@5=0.807
+MACRO AVERAGE   NDCG@10=0.930   MRR=0.910   P@5=0.867
 ```
 
 Known weak queries and root causes:
 
 | Query | NDCG | Cause |
 |-------|------|-------|
-| facet-only browsing | 0.000 | requires `facetFilters` support (deploy latest image) |
 | "home office setup" | 0.000 | conceptual query — no product contains those exact terms |
-| "healthy cooking" | 0.289 | indirect intent: signal is weak between query and Kitchen & Home |
+| "winter workout" | 0.301 | indirect intent: insulated/thermal/fleece items score low without exact keyword |
+| "healthy cooking" | 0.600 | indirect intent: signal is weak between query and Kitchen & Home |
 
 ### Adding queries
 
