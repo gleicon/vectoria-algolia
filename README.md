@@ -153,6 +153,8 @@ Uses the real `algoliasearch` v5 `liteClient` against a live server. Verifies th
 **Single command (Docker):**
 ```sh
 docker compose --profile test up --build --exit-code-from test
+# Docker prints ERRO[N] N at the end — that's the exit code, not an error.
+# ERRO[N] 0 means all tests passed.
 ```
 
 Or locally, with a server already running:
