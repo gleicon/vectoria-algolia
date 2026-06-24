@@ -51,6 +51,12 @@ VECTORIA_STORAGE_PATH=./data cargo run
 
 Server starts on `http://localhost:8108`.
 
+> **Single-index model.** The server creates exactly one index at startup, named
+> by `VECTORIA_INDEX` (default: `products`). Requests to any other index name
+> return 404. All loaders and the demo must use the same index name. To switch
+> datasets, set `VECTORIA_INDEX=wands` (or any name) before starting the server
+> and pass `--index wands` to the loader script.
+
 ### Load products
 
 ```sh
