@@ -74,3 +74,7 @@
 .ais-ClearRefinements-button--disabled {
   @apply opacity-40 cursor-not-allowed no-underline;
 }
+
+.ais-Highlight-highlighted {
+  @apply bg-amber-100 text-amber-900 rounded px-0.5 not-italic font-semibold;
+}

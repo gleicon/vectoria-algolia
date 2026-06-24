@@ -1,3 +1,5 @@
+import { Highlight } from 'react-instantsearch'
+
 interface HitDoc {
   objectID: string
   _score: number
@@ -23,13 +25,14 @@ const stars = (r: number) => {
 }
 
 export function Hit({ hit }: HitProps) {
-  const title = hit.title ?? hit.name ?? hit.objectID
   const inStock = hit.in_stock !== false
 
   return (
     <article className="bg-white border border-zinc-200 rounded-lg p-4 flex flex-col gap-2 hover:border-zinc-400 transition-colors">
       <div className="flex items-start justify-between gap-2">
-        <h3 className="text-sm font-semibold text-zinc-900 leading-snug">{title}</h3>
+        <h3 className="text-sm font-semibold text-zinc-900 leading-snug">
+          <Highlight attribute="title" hit={hit as never} />
+        </h3>
         {!inStock && (
           <span className="shrink-0 text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-600 border border-red-200">
             Out of stock
@@ -40,7 +43,7 @@ export function Hit({ hit }: HitProps) {
       <div className="flex items-center gap-2 text-xs text-zinc-500">
         {hit.brand && (
           <span className="bg-zinc-100 px-2 py-0.5 rounded font-medium text-zinc-700">
-            {hit.brand}
+            <Highlight attribute="brand" hit={hit as never} />
           </span>
         )}
         {hit.category && (
@@ -50,7 +53,7 @@ export function Hit({ hit }: HitProps) {
 
       {hit.description && (
         <p className="text-xs text-zinc-500 leading-relaxed line-clamp-2">
-          {hit.description}
+          <Highlight attribute="description" hit={hit as never} />
         </p>
       )}
 
