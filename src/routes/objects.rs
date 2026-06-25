@@ -37,7 +37,7 @@ pub async fn put_object(
         Ok(_) => Json(serde_json::json!({"objectID": object_id, "taskID": 1})).into_response(),
         Err(e) => {
             tracing::error!("index failed: {e:#}");
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(Value::String(e.to_string()))).into_response()
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(Value::String("internal error".into()))).into_response()
         }
     }
 }
@@ -62,12 +62,20 @@ pub struct BatchResponse {
     pub object_i_ds: Vec<String>,
 }
 
+const MAX_BATCH_SIZE: usize = 5_000;
+
 /// POST /1/indexes/{index}/batch
 pub async fn batch(
     Path(index): Path<String>,
     State(state): State<AppState>,
     Json(body): Json<BatchBody>,
 ) -> impl IntoResponse {
+    if body.requests.len() > MAX_BATCH_SIZE {
+        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
+            "message": format!("batch too large: max {MAX_BATCH_SIZE} requests")
+        }))).into_response();
+    }
+
     let engine = {
         let reg = state.registry.read().await;
         reg.get(&index).cloned()
@@ -86,7 +94,7 @@ pub async fn batch(
                 if let Err(e) = engine.index(product).await {
                     tracing::error!("batch index {id} failed: {e:#}");
                     return (StatusCode::INTERNAL_SERVER_ERROR,
-                        Json(serde_json::json!({"message": e.to_string()}))).into_response();
+                        Json(serde_json::json!({"message": "internal error"}))).into_response();
                 }
                 object_ids.push(id);
             }

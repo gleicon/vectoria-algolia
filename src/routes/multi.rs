@@ -37,7 +37,7 @@ pub async fn multi_query(
                 tracing::error!("multi-search failed on index '{index}': {e:#}");
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(serde_json::json!({"message": e.to_string()})),
+                    Json(serde_json::json!({"message": "internal error"})),
                 ).into_response();
             }
         }

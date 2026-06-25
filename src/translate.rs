@@ -11,6 +11,14 @@ fn default_highlight_post_tag() -> String {
     "</ais-highlight-0000000000>".to_string()
 }
 
+/// Reject caller-supplied highlight tags that contain script injection patterns.
+/// Falls back to the AIS default so the response is always well-formed.
+fn sanitize_tag(tag: &str, default: fn() -> String) -> String {
+    let lc = tag.to_lowercase();
+    let dangerous = lc.contains("<script") || lc.contains("javascript:") || lc.contains(" on");
+    if dangerous { default() } else { tag.to_string() }
+}
+
 /// Wrap every occurrence of any token in `text` with pre/post tags.
 /// Returns (highlighted_value, matched_words, match_level).
 fn highlight_text(
@@ -71,7 +79,8 @@ fn highlight_text(
     out.push_str(&text[cursor..]);
 
     let total_chars = text.chars().count();
-    let highlighted_chars: usize = merged.iter().map(|(s, e)| e - s).sum();
+    // Char count (not bytes): a 2-byte char would otherwise falsely inflate highlighted_chars.
+    let highlighted_chars: usize = merged.iter().map(|(s, e)| text[*s..*e].chars().count()).sum();
     let level = if highlighted_chars >= total_chars { "full" } else { "partial" };
     (out, matched, level)
 }
@@ -129,11 +138,12 @@ pub struct AlgoliaQuery {
 }
 
 fn default_hits_per_page() -> usize { 20 }
+const MAX_HITS_PER_PAGE: usize = 1_000;
 
 impl AlgoliaQuery {
     pub fn to_search_request(&self) -> SearchRequest {
-        let limit = self.hits_per_page;
-        let offset = self.page * limit;
+        let limit = self.hits_per_page.min(MAX_HITS_PER_PAGE);
+        let offset = self.page.saturating_mul(limit);
 
         // Build Vectoria filters from Algolia filter string + numericFilters.
         let mut filters: HashMap<String, Value> = self
@@ -247,11 +257,13 @@ pub fn to_algolia_response(
         ((resp.total as usize).saturating_add(hits_per_page - 1)) / hits_per_page
     };
 
+    let pre  = sanitize_tag(&req.highlight_pre_tag,  default_highlight_pre_tag);
+    let post = sanitize_tag(&req.highlight_post_tag, default_highlight_post_tag);
     let tokens: Vec<&str> = req.query.split_whitespace().collect();
     let hits = resp
         .hits
         .into_iter()
-        .map(|h| hit_to_algolia(h, &tokens, &req.highlight_pre_tag, &req.highlight_post_tag))
+        .map(|h| hit_to_algolia(h, &tokens, &pre, &post))
         .collect();
 
     let facets = resp.aggregations.map(|agg| {
@@ -328,4 +340,80 @@ impl MultiSearchRequest {
 #[derive(Debug, Serialize)]
 pub struct MultiSearchResponse {
     pub results: Vec<AlgoliaResponse>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::highlight_text;
+
+    const PRE: &str = "<b>";
+    const POST: &str = "</b>";
+
+    #[test]
+    fn single_token_partial_match() {
+        let (val, words, level) = highlight_text("Running Shoe", &["running"], PRE, POST);
+        assert_eq!(val, "<b>Running</b> Shoe");
+        assert_eq!(words, vec!["running"]);
+        assert_eq!(level, "partial");
+    }
+
+    #[test]
+    fn full_match_level_when_token_spans_entire_field() {
+        let (val, words, level) = highlight_text("Nike", &["nike"], PRE, POST);
+        assert_eq!(val, "<b>Nike</b>");
+        assert_eq!(words, vec!["nike"]);
+        assert_eq!(level, "full");
+    }
+
+    #[test]
+    fn overlapping_tokens_merged_into_single_span() {
+        // "run" and "running" both match at byte 0 — spans should merge, not double-wrap.
+        let (val, _words, _level) = highlight_text("running", &["run", "running"], PRE, POST);
+        assert_eq!(val, "<b>running</b>", "overlapping spans must merge; no nested tags");
+    }
+
+    #[test]
+    fn token_repeated_in_field() {
+        let (val, words, _level) = highlight_text("run run run", &["run"], PRE, POST);
+        assert_eq!(val, "<b>run</b> <b>run</b> <b>run</b>");
+        assert_eq!(words.len(), 1, "matchedWords should deduplicate");
+    }
+
+    #[test]
+    fn empty_query_returns_none_level() {
+        let (val, words, level) = highlight_text("Nike Air Max", &[], PRE, POST);
+        assert_eq!(val, "Nike Air Max");
+        assert!(words.is_empty());
+        assert_eq!(level, "none");
+    }
+
+    #[test]
+    fn no_match_returns_none_level_and_original_text() {
+        let (val, words, level) = highlight_text("Yoga Mat", &["shoe"], PRE, POST);
+        assert_eq!(val, "Yoga Mat");
+        assert!(words.is_empty());
+        assert_eq!(level, "none");
+    }
+
+    #[test]
+    fn unicode_multibyte_char_does_not_panic() {
+        // "naïve" contains a 2-byte char at position 2; ensure byte-offset logic is safe.
+        let (val, _words, _level) = highlight_text("naïve café", &["café"], PRE, POST);
+        assert!(val.contains("<b>café</b>"), "unicode text must highlight correctly");
+    }
+
+    #[test]
+    fn unicode_partial_match_not_reported_as_full() {
+        // "ñ " is 2 chars (3 bytes). Token "ñ" spans 2 bytes.
+        // Byte-based comparison would give highlighted_bytes(2) >= total_chars(2) → "full".
+        // Char-based is correct: 1 char matched of 2 → "partial".
+        let (_val, _words, level) = highlight_text("ñ shoe", &["ñ"], PRE, POST);
+        assert_eq!(level, "partial", "multibyte token partial match must not be 'full'");
+    }
+
+    #[test]
+    fn case_insensitive_match_preserves_original_case() {
+        let (val, _words, _level) = highlight_text("Sony WH-1000XM5", &["sony"], PRE, POST);
+        assert_eq!(val, "<b>Sony</b> WH-1000XM5");
+    }
 }

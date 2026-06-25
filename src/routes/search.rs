@@ -30,7 +30,7 @@ pub async fn query(
         }
         Err(e) => {
             tracing::error!("search failed: {e:#}");
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"message": e.to_string()}))).into_response()
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"message": "internal error"}))).into_response()
         }
     }
 }

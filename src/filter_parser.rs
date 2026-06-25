@@ -34,8 +34,10 @@ fn parse_term(term: &str, out: &mut HashMap<String, Value>) {
             "false" => Value::Bool(false),
             s => s
                 .parse::<f64>()
-                .map(|n| Value::Number(serde_json::Number::from_f64(n).unwrap()))
-                .unwrap_or_else(|_| Value::String(s.to_string())),
+                .ok()
+                .and_then(serde_json::Number::from_f64)
+                .map(Value::Number)
+                .unwrap_or_else(|| Value::String(s.to_string())),
         };
         out.insert(attr, val);
     }
@@ -55,6 +57,7 @@ fn parse_numeric(expr: &str, out: &mut HashMap<String, Value>) {
         return;
     };
     let Ok(n) = num_str.parse::<f64>() else { return };
+    if !n.is_finite() { return; }
     match op {
         ">=" => { out.insert("price_min".into(), Value::Number(serde_json::Number::from_f64(n).unwrap())); }
         ">"  => { out.insert("price_min".into(), Value::Number(serde_json::Number::from_f64(n + 1.0).unwrap())); }
@@ -109,6 +112,26 @@ mod tests {
     #[test]
     fn test_empty() {
         let f = parse("");
+        assert!(f.is_empty());
+    }
+
+    #[test]
+    fn nan_attribute_value_treated_as_string_not_panic() {
+        // "NaN".parse::<f64>() succeeds in Rust; from_f64(NaN) returns None.
+        // Must fall back to string rather than panic.
+        let f = parse("category:NaN");
+        assert_eq!(f["category"], Value::String("NaN".into()));
+    }
+
+    #[test]
+    fn nan_numeric_filter_ignored_not_panic() {
+        let f = parse("price >= NaN");
+        assert!(f.is_empty(), "non-finite numeric filter must be silently dropped");
+    }
+
+    #[test]
+    fn infinity_numeric_filter_ignored_not_panic() {
+        let f = parse("price >= inf");
         assert!(f.is_empty());
     }
 }

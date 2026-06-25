@@ -206,8 +206,10 @@ async fn test_query_facets_returned() {
         .await
         .unwrap();
     let body = json_body(resp).await;
-    // facets should be present when requested
-    assert!(body.get("facets").is_some());
+    let facets = &body["facets"];
+    assert!(facets.is_object(), "facets must be an object");
+    assert!(facets["category"].is_object(), "facets.category must have per-value counts");
+    assert!(facets["brand"].is_object(), "facets.brand must have per-value counts");
 }
 
 #[tokio::test]
@@ -223,8 +225,7 @@ async fn test_query_filter_by_category() {
     let body = json_body(resp).await;
     let hits = body["hits"].as_array().unwrap();
     for hit in hits {
-        assert_eq!(hit["category"].as_str().unwrap(), "Electronics",
-            "all hits should be Electronics when filter applied");
+        assert_eq!(hit["category"].as_str().unwrap(), "Electronics");
     }
 }
 
@@ -242,8 +243,7 @@ async fn test_query_filter_price_range() {
     let hits = body["hits"].as_array().unwrap();
     for hit in hits {
         let price = hit["price"].as_f64().unwrap();
-        assert!(price >= 100.0 && price <= 200.0,
-            "hit price {price} outside expected range");
+        assert!(price >= 100.0 && price <= 200.0);
     }
 }
 
@@ -424,4 +424,48 @@ async fn test_multi_query_unknown_index_returns_404() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+// ── numericFilters / URL-encoded params ──────────────────────────────────────
+
+#[tokio::test]
+async fn test_numeric_filters_price_range() {
+    let app = seeded_app().await;
+    let resp = app
+        .oneshot(post_req(
+            "/1/indexes/products/query",
+            json!({"query": "", "hitsPerPage": 10, "numericFilters": ["price >= 100", "price <= 200"]}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = json_body(resp).await;
+    let hits = body["hits"].as_array().unwrap();
+    assert!(!hits.is_empty(), "numericFilters should return matching hits");
+    for hit in hits {
+        let price = hit["price"].as_f64().unwrap();
+        assert!(price >= 100.0 && price <= 200.0);
+    }
+}
+
+#[tokio::test]
+async fn test_multi_search_url_encoded_params() {
+    let app = seeded_app().await;
+    let resp = app
+        .oneshot(post_req(
+            "/1/indexes/_/queries",
+            json!({
+                "requests": [
+                    {"indexName": "products", "params": "query=running&hitsPerPage=5"}
+                ]
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = json_body(resp).await;
+    let results = body["results"].as_array().unwrap();
+    assert_eq!(results.len(), 1);
+    assert!(!results[0]["hits"].as_array().unwrap().is_empty());
+    assert_eq!(results[0]["hitsPerPage"].as_u64().unwrap(), 5);
 }

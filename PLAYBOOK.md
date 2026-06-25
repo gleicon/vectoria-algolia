@@ -215,6 +215,18 @@ Override the client initialization with the custom host above.
 
 ---
 
+## Security notes
+
+The server is designed for **local development and demos only**. Defaults that reflect this:
+
+- **No authentication.** Any client that can reach the port can read, write, and delete index data.
+- **CORS fully open.** All origins, methods, and headers are accepted. Do not expose this server on a network-accessible interface without an authenticating reverse proxy.
+- **Rate limiting absent.** `hitsPerPage` is capped at 1 000 and batch requests at 5 000 objects, but there is no per-IP request rate limit.
+
+Do not run this server on a public or shared network interface without additional access controls.
+
+---
+
 ## Docker image details
 
 Single multi-stage image:
@@ -242,18 +254,20 @@ First container start downloads `multilingual-e5-small` (~40 MB) from HuggingFac
 cargo test
 ```
 
-29 tests:
-- 7 filter_parser unit tests
+40 tests:
+- 10 filter_parser unit tests
+- 9 translate unit tests
 - 3 ingest unit tests
-- 11 route integration tests (axum + stub embedding, no model download)
-- 8 doc tests
+- 18 route integration tests (axum + stub embedding, no model download)
 
 ---
 
 ## Search quality evaluation
 
 `scripts/quality_eval.py` measures ranking quality against a curated 30-query test set.
-No extra dependencies — stdlib only (Python 3.7+).
+No extra dependencies — stdlib only (Python 3.7+). All three evaluation scripts
+(`quality_eval.py`, `wands_setup.py`, `esci_setup.py`) share `scripts/metrics.py`; run
+them from the repo root so the relative import resolves.
 
 ### Metrics
 

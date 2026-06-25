@@ -12,11 +12,11 @@ Usage:
 
 import argparse
 import json
-import math
 import sys
 import urllib.request
 import urllib.error
 from typing import Callable, List, Optional
+from metrics import dcg, ndcg, mrr, precision_at
 
 # ── Relevance functions ────────────────────────────────────────────────────────
 # Each returns 0 (irrelevant), 1 (partial), 2 (relevant), or 3 (perfect).
@@ -113,26 +113,6 @@ QUERIES: List[tuple] = [
 ]
 
 
-# ── Metrics ────────────────────────────────────────────────────────────────────
-
-def dcg(grades: List[int], k: int) -> float:
-    return sum(g / math.log2(i + 2) for i, g in enumerate(grades[:k]))
-
-def ndcg(grades: List[int], k: int) -> float:
-    ideal = sorted(grades, reverse=True)
-    d = dcg(ideal, k)
-    return dcg(grades, k) / d if d > 0 else 0.0
-
-def mrr(grades: List[int]) -> float:
-    for i, g in enumerate(grades):
-        if g > 0:
-            return 1.0 / (i + 1)
-    return 0.0
-
-def precision_at(grades: List[int], k: int) -> float:
-    return sum(1 for g in grades[:k] if g > 0) / k
-
-
 # ── HTTP helper ───────────────────────────────────────────────────────────────
 
 def search(server: str, index: str, query: str, hpg: int, facet_filters: list) -> List[dict]:
@@ -182,7 +162,7 @@ def main() -> None:
 
         n = ndcg(grades, K)
         m = mrr(grades)
-        p = precision_at(grades, K)
+        p = precision_at(grades, 5)
         results.append((n, m, p))
 
         label = (q_str if q_str else f"[{ff[0][0] if ff else ''}]")[:31]

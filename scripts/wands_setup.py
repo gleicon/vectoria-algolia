@@ -20,12 +20,13 @@ import argparse
 import csv
 import io
 import json
-import math
 import sys
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+from metrics import dcg, ndcg, mrr, precision_at, batch_load
 
 BASE_URL = "https://raw.githubusercontent.com/wayfair/WANDS/main/dataset"
 PRODUCTS_URL = f"{BASE_URL}/product.csv"
@@ -126,47 +127,6 @@ def load_labels(text: str) -> Dict[str, Dict[str, int]]:
     return labels
 
 
-def batch_load(server: str, index: str, products: List[dict], batch_size: int = 200) -> None:
-    url = f"{server}/1/indexes/{index}/batch"
-    total = len(products)
-    for i in range(0, total, batch_size):
-        chunk = products[i:i + batch_size]
-        requests = [{"action": "addObject", "body": p} for p in chunk]
-        body = json.dumps({"requests": requests}).encode()
-        req = urllib.request.Request(
-            url, data=body,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=30):
-                pass
-        except urllib.error.URLError as e:
-            print(f"  ERROR at batch {i}: {e}", file=sys.stderr)
-            sys.exit(1)
-        done = min(i + batch_size, total)
-        print(f"  loaded {done}/{total}", end="\r", flush=True)
-    print()
-
-
-# ── Metrics ───────────────────────────────────────────────────────────────────
-
-def dcg(grades: List[int], k: int) -> float:
-    return sum(g / math.log2(i + 2) for i, g in enumerate(grades[:k]))
-
-def ndcg(grades: List[int], k: int) -> float:
-    ideal = sorted(grades, reverse=True)
-    d = dcg(ideal, k)
-    return dcg(grades, k) / d if d > 0 else 0.0
-
-def mrr(grades: List[int]) -> float:
-    for i, g in enumerate(grades):
-        if g > 0:
-            return 1.0 / (i + 1)
-    return 0.0
-
-def precision_at(grades: List[int], k: int) -> float:
-    return sum(1 for g in grades[:k] if g > 0) / k
 
 
 def search(server: str, index: str, query: str, k: int) -> List[dict]:

@@ -26,6 +26,7 @@ const searchClient = liteClient('local', 'local', {
 function ScoreLogger() {
   const { results } = useInstantSearch()
   useEffect(() => {
+    if (!import.meta.env.DEV) return
     if (!results || results.hits.length === 0) return
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const top10 = results.hits.slice(0, 10).map((h: any, i: number) => ({
