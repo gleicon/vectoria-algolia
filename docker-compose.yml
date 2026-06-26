@@ -22,11 +22,10 @@ services:
     depends_on:
       search:
         condition: service_healthy
+    restart: "no"
     volumes:
       - ./scripts:/scripts:ro
     entrypoint: ["/scripts/load_products.sh", "http://search:8108", "products"]
-    profiles:
-      - load
 
   wands:
     image: python:3.11-slim

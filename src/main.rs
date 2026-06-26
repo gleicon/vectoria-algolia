@@ -24,9 +24,17 @@ async fn main() -> anyhow::Result<()> {
     let state = AppState { registry };
     let mut app = build_router(state);
 
-    if let Ok(static_dir) = std::env::var("STATIC_DIR") {
-        tracing::info!("serving static files from {static_dir}");
-        app = app.fallback_service(ServeDir::new(static_dir));
+    let static_dir = std::env::var("STATIC_DIR").ok().or_else(|| {
+        // Local dev convenience: serve demo/dist if it exists and STATIC_DIR isn't set.
+        let candidate = "./demo/dist";
+        std::path::Path::new(candidate)
+            .join("index.html")
+            .exists()
+            .then(|| candidate.to_string())
+    });
+    if let Some(dir) = static_dir {
+        tracing::info!("serving static files from {dir}");
+        app = app.fallback_service(ServeDir::new(dir));
     }
 
     let addr: SocketAddr = format!("{host}:{port}").parse()?;

@@ -54,8 +54,7 @@ _Algolia_ is a registered trademark of Algolia, Inc. _InstantSearch_ libraries a
 ```sh
 git clone https://github.com/gleicon/vectoria-algolia
 cd vectoria-algolia
-docker compose up --build
-docker compose --profile load run --rm loader   # load 550 sample products
+docker compose up --build   # builds, starts, and loads 550 sample products
 open http://localhost:8108
 ```
 
@@ -117,7 +116,7 @@ Set `NEXT_PUBLIC_SEARCH_URL=localhost:8108` in `.env.local`.
 
 Three test layers ship with the project.
 
-### Rust integration tests
+### Rust unit + integration tests
 
 Uses a stub embedding provider — no model download, runs in milliseconds.
 
@@ -125,26 +124,37 @@ Uses a stub embedding provider — no model download, runs in milliseconds.
 cargo test
 ```
 
-**Latest results (16 tests, 0 failed):**
+**40 tests, 0 failed:**
 
-| Category | Test | |
-|----------|------|-|
-| Indexing | PUT single object returns 200 + objectID | ✓ |
-| Indexing | PUT to unknown index returns 404 | ✓ |
-| Indexing | batch indexes multiple objects | ✓ |
-| Search | query returns hits and nbHits | ✓ |
-| Search | unknown index returns 404 | ✓ |
-| Search | pagination fields present | ✓ |
-| Filters | `filters` string restricts by category | ✓ |
-| Filters | price range filter | ✓ |
-| Facets | `facets` param returns aggregated counts | ✓ |
-| Facets | `facetFilters` restricts results | ✓ |
-| `_highlightResult` | present on every hit | ✓ |
-| `_highlightResult` | AIS tags wrap matched token | ✓ |
-| `_highlightResult` | empty query → `matchLevel: none` | ✓ |
-| Multi-search | two requests → two independent results | ✓ |
-| Multi-search | unknown index returns 404 | ✓ |
-| Multi-search | disjunctive: filtered ≤ unfiltered nbHits | ✓ |
+| Suite | Count | Covers |
+|-------|------:|--------|
+| `filter_parser` unit | 10 | filter-string parsing, NaN/Infinity guards |
+| `translate` unit | 9 | highlight matching, unicode, edge cases |
+| `ingest` unit | 3 | object ingestion, missing-objectID handling |
+| route integration | 18 | full HTTP round-trips via axum test client |
+
+Route integration tests (the 18):
+
+| Category | Test |
+|----------|------|
+| Indexing | PUT single object returns 200 + objectID |
+| Indexing | PUT to unknown index returns 404 |
+| Indexing | batch indexes multiple objects |
+| Search | query returns hits and nbHits |
+| Search | unknown index returns 404 |
+| Search | pagination fields present |
+| Filters | `filters` string restricts by category |
+| Filters | price range filter |
+| Filters | `numericFilters` array |
+| Facets | `facets` param returns aggregated counts |
+| Facets | `facetFilters` restricts results |
+| `_highlightResult` | present on every hit |
+| `_highlightResult` | AIS tags wrap matched token |
+| `_highlightResult` | empty query → `matchLevel: none` |
+| Multi-search | two requests → two independent results |
+| Multi-search | unknown index returns 404 |
+| Multi-search | disjunctive: filtered ≤ unfiltered nbHits |
+| Multi-search | URL-encoded params forwarded correctly |
 
 ### Client compatibility tests (Node.js)
 
@@ -159,7 +169,7 @@ docker compose --profile test up --build --exit-code-from test
 
 Or locally, with a server already running:
 ```sh
-cd tests/client && npx vitest run
+cd tests/client && SERVER_URL=http://localhost:8108 npx vitest run
 ```
 
 **Latest results (20 tests, exit code 0):**
@@ -217,6 +227,49 @@ Pass `"searchMode"` in any query body to override the default hybrid ranking:
 | `hybrid` | BM25 + vector, re-ranked (default) |
 | `semantic` | Vector-only |
 | `bm25` | Keyword-only, no embeddings |
+
+---
+
+## Troubleshooting
+
+### `GET /` returns 404, but `POST /query` returns 200
+
+A local `vectoria-algolia` process is bound to port 8108 and intercepting requests before Docker's port mapping. This happens when you've previously run `cargo run` in the same shell session.
+
+```sh
+# Find and kill the local process
+lsof -i :8108
+kill <PID>
+
+# Restart the Docker container so its port binding takes effect
+docker compose restart search
+```
+
+### Site shows 404 in the browser after `docker compose up`
+
+The `demo/dist/` directory may not have been built. The Docker image includes the React demo in its final stage. If you're running locally (not Docker), build the demo first:
+
+```sh
+cd demo && npm install && npm run build
+cd ..
+cargo run  # STATIC_DIR auto-detected from ./demo/dist
+```
+
+### Products missing after container restart
+
+The index is in-memory by default and is cleared on restart. Reload products:
+
+```sh
+docker compose run --rm loader
+# or locally:
+./scripts/load_products.sh
+```
+
+To persist the index across restarts, mount a volume and set `VECTORIA_STORAGE_PATH`:
+
+```sh
+VECTORIA_STORAGE_PATH=./data cargo run
+```
 
 ---
 

@@ -23,15 +23,17 @@ Complete runbook for building, running, and loading data.
 git clone https://github.com/gleicon/vectoria-algolia
 cd vectoria-algolia
 
-# 2. Build and start (downloads embedding model ~40 MB on first run)
+# 2. Build, start, and load sample products in one step.
+#    (~60s first run while the embedding model downloads)
 docker compose up --build
 
-# 3. Wait for healthy (~60s first run while model downloads), then load products
-docker compose run --rm loader
-
-# 4. Open the demo
+# 3. Open the demo once the loader container exits successfully
 open http://localhost:8108
 ```
+
+`docker compose up` starts the search server and, once it is healthy, runs the
+`loader` service automatically to seed 50 sample products. The loader exits after
+seeding; the search server keeps running.
 
 The single container serves both the Algolia-compatible API and the React demo.
 
@@ -50,6 +52,10 @@ VECTORIA_STORAGE_PATH=./data cargo run
 ```
 
 Server starts on `http://localhost:8108`.
+
+The server automatically serves the React demo from `./demo/dist/` if that
+directory exists (built by `npm run build` inside `demo/`). Otherwise, use
+`npm run dev` in the `demo/` directory for hot-reload at port 3000.
 
 > **Single-index model.** The server creates exactly one index at startup, named
 > by `VECTORIA_INDEX` (default: `products`). Requests to any other index name
@@ -250,6 +256,8 @@ First container start downloads `multilingual-e5-small` (~40 MB) from HuggingFac
 
 ## Running tests
 
+> **Stop any local server first.** If `cargo run` is running on port 8108, `cargo test` is unaffected (it uses an in-process test client), but switching to Docker while a local binary holds the port will cause the browser to get 404 for `GET /`. Kill the local process with `lsof -i :8108` before `docker compose up`.
+
 ```sh
 cargo test
 ```
@@ -412,3 +420,58 @@ volume between runs — subsequent runs skip the download.
 - Both scripts accept `--server` and `--index` to target any running instance.
 - Quality metrics from these datasets are directly comparable to the synthetic
   baseline because they use the same NDCG@10 / MRR / P@5 implementation.
+
+---
+
+## Troubleshooting
+
+### Browser gets 404 for `GET /` but the API (`/1/indexes/...`) returns 200
+
+A local `vectoria-algolia` binary (started by `cargo run`) is bound to port 8108
+and intercepting requests before Docker's port mapping reaches the container.
+The container's binary has `STATIC_DIR` set and serves the demo correctly from
+inside the container; the local binary does not, so the browser hits the wrong
+process.
+
+```sh
+# Find the process
+lsof -i :8108          # shows PID and COMMAND
+
+# Kill it
+kill <PID>
+
+# Restart the container so Docker re-establishes port forwarding
+docker compose restart search
+```
+
+### Products are gone after `docker compose restart`
+
+The index is in-memory by default and cleared on restart. Reload:
+
+```sh
+docker compose run --rm loader
+```
+
+For persistence across restarts, set `VECTORIA_STORAGE_PATH` in `docker-compose.yml`:
+
+```yaml
+environment:
+  VECTORIA_STORAGE_PATH: /data/index
+```
+
+### Client compat tests fail with "Connection refused"
+
+The test container (`--profile test`) expects the `search` service to be healthy.
+Start the server first, then run the tests:
+
+```sh
+docker compose up -d           # start server in background
+docker compose --profile test up --build --exit-code-from test
+```
+
+Or run locally against a running server:
+
+```sh
+cd tests/client
+SERVER_URL=http://localhost:8108 npx vitest run
+```
