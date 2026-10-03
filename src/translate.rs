@@ -207,6 +207,9 @@ impl AlgoliaQuery {
             explain: false,
             rerank: false,
             ranking_weights: None,
+            candidate_pool: None,
+            cluster: false,
+            snippets: false,
         }
     }
 }
