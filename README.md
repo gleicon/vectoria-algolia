@@ -257,18 +257,58 @@ cargo run  # STATIC_DIR auto-detected from ./demo/dist
 
 ### Products missing after container restart
 
-The index is in-memory by default and is cleared on restart. Reload products:
+The index is in-memory by default and is cleared on restart. Either reload products:
 
 ```sh
 docker compose run --rm loader
-# or locally:
-./scripts/load_products.sh
 ```
 
-To persist the index across restarts, mount a volume and set `VECTORIA_STORAGE_PATH`:
+Or use persistent storage so the index survives restarts (see below).
 
+---
+
+## Persistent storage
+
+Set `VECTORIA_STORAGE_PATH` to a directory and the adapter uses `EdgeStoreStorage` (the same embedded KV+vector store that powers vectoria) instead of in-memory. Data survives container restarts with no reimport.
+
+**Local dev:**
 ```sh
 VECTORIA_STORAGE_PATH=./data cargo run
+```
+
+**Docker Compose** — add to your `docker-compose.yml`:
+```yaml
+services:
+  search:
+    environment:
+      VECTORIA_STORAGE_PATH: /data/vectoria
+    volumes:
+      - vectoria-data:/data
+
+volumes:
+  vectoria-data:
+```
+
+Import once, then restart as many times as you want — data is persisted.
+
+---
+
+## Migration from Algolia
+
+vectoria-algolia is designed as a stepping stone for teams migrating away from Algolia:
+
+**Step 1 — Drop-in replacement.** Point your `algoliasearch` client at `localhost:8108`. No code changes beyond the host override. Import your catalog via the standard batch API.
+
+**Step 2 — Persistent storage.** Set `VECTORIA_STORAGE_PATH` so your index survives deploys and restarts.
+
+**Step 3 — Full vectoria API.** When ready, switch to the [vectoria](https://github.com/gleicon/vectoria) server for the full API surface: named indexes, multi-tenancy, signal aggregation, behavioral reranking, and the `/admin` panel. The same `VECTORIA_STORAGE_PATH` directory works as the vectoria data directory — no reimport needed.
+
+```
+Algolia SDK
+    ↓  change host to localhost:8108
+vectoria-algolia  ←── same wire protocol, embedded search
+    ↓  point VECTORIA_STORAGE_PATH at the same dir
+vectoria-server   ←── full API, shared data volume
 ```
 
 ---
