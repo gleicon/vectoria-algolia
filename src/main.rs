@@ -1,7 +1,7 @@
 use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 use tokio::sync::RwLock;
 use tower_http::services::ServeDir;
-use vectoria_core::SearchEngineBuilder;
+use vectoria_core::{EdgeStoreStorage, SearchEngineBuilder};
 use vectoria_algolia::{AppState, Registry, build_router};
 
 #[tokio::main]
@@ -14,7 +14,13 @@ async fn main() -> anyhow::Result<()> {
     let port = std::env::var("PORT").unwrap_or_else(|_| "8108".into());
     let default_index = std::env::var("VECTORIA_INDEX").unwrap_or_else(|_| "products".into());
 
-    let engine = SearchEngineBuilder::new().build().await?;
+    let mut builder = SearchEngineBuilder::new();
+    if let Ok(path) = std::env::var("VECTORIA_STORAGE_PATH") {
+        tracing::info!("using EdgeStore storage at {path}");
+        let storage = EdgeStoreStorage::open(&path)?;
+        builder = builder.storage(Arc::new(storage));
+    }
+    let engine = builder.build().await?;
     let engine = Arc::new(engine);
 
     let mut map = HashMap::new();
